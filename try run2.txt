@@ -1,0 +1,17 @@
+var RecService         = window.optimizelyUtils.RecService;
+var addWidget          = window.optimizelyUtils.addWidget;
+var getUniquePageviews = window.optimizelyUtils.getUniquePageviews;
+var getUniques         = window.optimizelyUtils.getUniques;
+var logEnabled         = extension.ext_mode === 'dev' || window.optimizely_editor_data_endpoint || window.localStorage.getItem('logext') || false;
+var currentEvntId      = window.dataLayer[0].event.eventId || '';
+var currentEnvtType = window.dataLayer[0].event.eventType || '';
+var currentEnvtSponsor = window.dataLayer[0].event.eventSponsor || '';
+
+var popEvents = RecService
+	.init({serviceId: 10166551853, log: logEnabled})
+  .addRecommender({max: 10, id: 10310630414, type: 'popular'})
+//Top Events of same type
+  .run({max: 15})
+  .then(function(recs) {
+  });
+console.log('hani2 ' + popEvents);

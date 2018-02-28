@@ -1,0 +1,121 @@
+var RecService         = window.optimizelyUtils.RecService;
+var addWidget          = window.optimizelyUtils.addWidget;
+var getUniquePageviews = window.optimizelyUtils.getUniquePageviews;
+var getUniques         = window.optimizelyUtils.getUniques;
+var logEnabled         = extension.ext_mode === 'dev' || window.optimizely_editor_data_endpoint || window.localStorage.getItem('logext') || false;
+var currentEvntId      = window.dataLayer[0].event.eventId || '';
+var currentEnvtType = window.dataLayer[0].event.eventType || '';
+var currentEnvtSponsor = window.dataLayer[0].event.eventSponsor || '';
+
+var sortByDate = function(evt1, evt2) {
+  try {
+    return (new Date(evt1.event_date) > new Date(evt2.event_date));
+  } catch(err) {
+    return false;
+  }
+}
+
+var filterEventRecs = function(evtRec) {
+  // don't show the current event as a rec
+  if(evtRec.event_id == currentEvntId) return false;
+  
+  try {
+    // Format: '2018.11.04 13:00:00'
+    var eventDate = new Date(evtRec.event_date); 
+  } catch(err) {
+    var eventDate = null; 
+  }
+  // if false, the event is in the past and will be omitted
+  return eventDate > new Date;
+}
+
+var monthNames = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+var dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+  "Saturday"
+];
+var to12HrTime = function(date) {
+  var hours = date.getHours(),
+  minutes = date.getMinutes(),
+  day = date.getDay(),
+  ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // the hour '0' should be '12'
+  minutes = minutes < 10 ? '0'+minutes : minutes;
+  var strTime = hours + ':' + minutes + ampm;
+
+  return strTime;
+}
+
+var popEvents = RecService
+	.init({serviceId: 10166551853, log: logEnabled})
+	.addRecommender({max: 20, id: 10310630414, type: 'popular'}) //Top Events
+	.run({max: 15})
+	.then(function(recs) {
+	   if (recs.event_category !== currentEnvtType || recs.event_sponsor !== currentEnvtSponsor){ 
+	   return false;
+	   }else{
+				var x = recs.filter((rec) => {
+					return rec.event_category === currentEnvtType;
+								})
+							.sort((a, b) => {
+					return a.event_date > b.event_date ? 1 : -1
+											})
+				if (x.length <=4){
+					var y = recs.filter((rec) => {
+					return rec.event_sponsor === currentEnvtSponsor
+											     })
+								.sort ((a,b) => {
+						return a.event_date > b.event_date ? 1 : -1
+												})
+					z = (x.concat(y));
+				}else {
+					z = x;
+					return z;
+					  }
+			}
+	}	
+								 
+	popEvents.merge({max: 20})
+  .then(function(recs) { 
+   
+   popEvents.logger.log('Current event id: ' + currentEvntId);
+  
+    // Fetch recently viewed Events and add them to recs Array
+    var pageviews = getUniquePageviews('9499670348_event_details_page_all_url_structures', 'tags.event_id'),
+        recentlyViewedEvts = pageviews.map(function(item) { return item.tags; });
+		recentlyViewedEvts = recentlyViewedEvts.sort(sortByDate);
+        popEvents.logger.log('recentlyViewedEvts', recentlyViewedEvts); 
+  			recs = recs.concat(recentlyViewedEvts);
+  
+    // Use placeholder data in development
+    if(extension.ext_mode === 'dev' && extension.example_json) {
+      try {
+        recs = recs.concat(JSON.parse(extension.example_json));
+      } catch(err) { }
+    }
+  
+    var uniqueRecs = getUniques(recs, 'event_id'),
+        filteredRecs = uniqueRecs.filter(filterEventRecs);
+  			filteredRecs = filteredRecs.map(function(event) {
+  // use map to normalize event data
+  // to ensure dates are formatted, and
+  // recently viewed event fields are the same as the rec-engine items
+  var evtDate = new Date(event.event_date);
+  event.event_date = dayNames[evtDate.getDay()] + " " + monthNames[evtDate.getMonth()] + " " + evtDate.getDate() + ", " + evtDate.getFullYear() + ' | ' + to12HrTime(evtDate);
+  return event;
+});
+
+    filteredRecs = filteredRecs.slice(0, extension.max || 10);
+    popEvents.logger.log('Render recs (max items: ' + (extension.max || 10) + ')', filteredRecs);    
+  
+    var html = extension.$render({
+      extension: extension,
+      recos: filteredRecs,
+    });    
+  
+    addWidget(extension, html);
+  });		
+	
+	
